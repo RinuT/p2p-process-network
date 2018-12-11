@@ -1,0 +1,118 @@
+query selectProductBypoNumber{
+    description: "Display order status based on order number"
+    statement:
+        SELECT com.cts.ipm.p2pNetwork.purchaseorder
+            WHERE (poNumber == _$poNumber)
+  }
+  query selectProductByBatch{
+    description: "Display order status based on order number"
+    statement:
+        SELECT com.cts.ipm.p2pNetwork.newBatch
+            WHERE (batchCode == _$batchCode)
+  }
+  
+  query selectOrderbySupplier{
+    description: "Display order based on supplier"
+  statement:
+        SELECT com.cts.ipm.p2pNetwork.newSupplier
+           WHERE (supplierId == _$supplierId)
+  }
+  
+  query selectProductBysupplier{
+    description: "Display order based on supplier"
+  statement:
+        SELECT com.cts.ipm.p2pNetwork.purchaseorder
+           WHERE (purchaseorder.supplier == _$supplier)
+  }
+  
+  query selectMaterialbymaterialCode{
+   description: "Display material based on poNumber"
+  statement:
+        SELECT com.cts.ipm.p2pNetwork.Material
+           WHERE (materialCode == _$materialCode)
+  }
+  
+  
+  query selectProductBymaterialCode{
+   description: "Display material based on material code"
+  statement:
+        SELECT com.cts.ipm.p2pNetwork.Material
+           WHERE (materialCode == _$materialCode)
+  }
+  
+  query selectMaterial {
+    description: "Select all Material"
+    statement:
+        SELECT com.cts.ipm.p2pNetwork.Material
+  }
+  
+  query selectBatch {
+    description: "Select all Batch"
+    statement:
+        SELECT com.cts.ipm.p2pNetwork.newBatch
+  }
+  
+  
+  query selectInvoice {
+    description: "Select all Invoice"
+    statement:
+        SELECT com.cts.ipm.p2pNetwork.SelfInvoice
+  }
+  
+  /*query selectReport {
+    description: "Select all Invoice"
+    statement:
+        SELECT com.cts.ipm.p2pNetwork.Report
+  }*/
+  
+  query selectProductByinvoiceId{
+    description: "Display order based on invoice"
+  statement:
+        SELECT com.cts.ipm.p2pNetwork.SelfInvoice
+           WHERE (invDocNum == _$invDocNum)
+  }
+  
+  
+  
+  query selectProductByinvDocNum{
+    description: "Display order based on invoice"
+  statement:
+        SELECT com.cts.ipm.p2pNetwork.SelfInvoice
+           WHERE (invDocNum == _$invDocNum)
+  }
+  
+  query getHistorianRecords {
+    description: "get all Historian records"
+    statement: SELECT org.hyperledger.composer.system.HistorianRecord 
+    WHERE (transactionType =="com.cts.ipm.p2pNetwork.PlaceOrder" OR "org.acme.pharma_network.ShipmentNotification" OR  "com.cts.ipm.p2pNetwork.RecordConsumption" OR "com.cts.ipm.p2pNetwork.PlaceOrder" OR "com.cts.ipm.p2pNetwork.InvoiceStatus")
+  }
+  
+  query getHistorianRecordsforPlaceOrder {
+    description: "get all Historian records"
+    statement: SELECT org.hyperledger.composer.system.HistorianRecord 
+    WHERE (transactionType =="com.cts.ipm.p2pNetwork.PlaceOrder")
+  }
+  
+  query getHistorianRecordsforShipmentNotification {
+    description: "get all Historian records"
+    statement: SELECT org.hyperledger.composer.system.HistorianRecord 
+    WHERE (transactionType =="com.cts.ipm.p2pNetwork.ShipmentNotification")
+  }
+  
+  query getHistorianRecordsforGoodsReceipt {
+    description: "get all Historian records"
+    statement: SELECT org.hyperledger.composer.system.HistorianRecord 
+    WHERE (transactionType =="com.cts.ipm.p2pNetwork.GoodsReceipt")
+  }
+  
+  query getHistorianRecordsforRecordConsumption {
+    description: "get all Historian records"
+    statement: SELECT org.hyperledger.composer.system.HistorianRecord 
+    WHERE (transactionType =="com.cts.ipm.p2pNetwork.RecordConsumption")
+  }
+  
+  query getHistorianRecordsforPayment {
+    description: "get all Historian records"
+    statement: SELECT org.hyperledger.composer.system.HistorianRecord 
+    WHERE (transactionType =="com.cts.ipm.p2pNetwork.InvoiceStatus")
+  }

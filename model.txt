@@ -1,0 +1,356 @@
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+namespace com.cts.ipm.p2pNetwork
+
+transaction generateReport{
+
+}
+
+event GenerateReportEvent{
+    o String poNumber
+    o String date
+    o String transactoinType
+    o String quantity
+    o String materialCode
+}
+
+
+concept newpurchaseorder{
+      o String lineNumber
+      o String materialCode
+      o String orderQuantity
+      o String shippedQuantity
+      o String receivedQuantity
+      o String requiredQuantity
+      o String availableQuantity
+      o String uop
+      o String deliveryDate
+      o String creationDate
+      o String price
+      o String currency
+      o String supplier
+      o String manufacturer
+      o String orderStatus
+     o newBatch[] batch
+    
+  	 }
+  	 abstract asset MaterialNum identified by poNumber{
+          o String poNumber
+          }
+
+     asset purchaseorder extends MaterialNum{
+        o newpurchaseorder purchaseorder    
+        }
+    concept batch{
+      o String shipmentDate
+      o String receiptDate
+      o String shippedQuantity
+      o String recievedQuantity
+      o String availableQuantity
+      o String batchStatus
+      o String poNumber
+      o String materialCode
+      o SelfInvoice[] invoice
+     
+    }
+  	asset newBatch identified by batchCode{
+        o String batchCode
+        o batch batch
+    }
+    concept delNote{
+        o String poNumber
+        o String lineNumber
+        o String materialCode
+        o String UOP
+        o String shipmentDate
+        o String shipmentQuantity
+        o String supplierId
+    }
+       abstract asset DeliveryNoteNumber identified by deliveryNoteNumber{
+        o String deliveryNoteNumber
+    }
+      asset DeliveryNote extends DeliveryNoteNumber{
+        o delNote note
+        o String batchId
+      }
+      concept newSelfInvoice{
+          o newBatch[] batch
+
+      }
+      asset SelfInvoice extends invNum{
+          
+          o String consumptionQuantity
+          o String invoiceStatus
+          o String amount
+          o String materialCode
+          o String poNumber
+          o newBatch batch
+      }
+       transaction PlaceOrder{
+           o String poNumber
+           o newpurchaseorder purchaseorder
+         o newReport report
+       }
+      transaction ShipmentNotification {
+          o String batchId
+         // o String status
+          o delNote deliverynote
+          o batch batch
+           o newReport report
+      }
+
+      transaction generateInvoice{
+        o String invDocNum
+        o SelfInvoice selfinvoice
+        o String batchCode
+
+      }
+
+		asset Material identified by materialCode{
+         o String materialCode
+         o String receivedQuantity
+         o String availableQuantity
+         o purchaseorder[] purchaseorder
+         o newReport[] report
+        }
+
+concept newReport{
+  o String transactionType
+  o String date
+  o String quantity
+  o String poNumber
+  o String materialCode
+}
+
+      concept newConsumptionRecord{
+          o String poNumber
+          o String lineNum
+          o String materialCode
+          o String quantity
+          o String UOP
+          o String materialDoceDate
+          o String consumptionQuantity   
+          o String invDocNum
+        // o String[] batch
+         // o String[] batchQuantity
+      }
+
+abstract asset recordNum identified by recordId{
+	o String recordId
+}
+asset ConsumptionRecord extends recordNum{
+  o newConsumptionRecord consumptionrecord
+}
+
+
+
+abstract asset invNum identified by invDocNum{
+	o String invDocNum
+}
+
+
+asset newSupplier identified by supplierId{
+   o String supplierId
+    o matCode[] materialCode
+}
+
+
+concept Batch{	
+  o String poNumber
+  	o String batchId
+    o String quantity
+}
+
+concept matCode{
+ o String MaterialCode
+}
+
+
+concept receipt{
+  	o String poNumber
+    o String lineNumber
+    o String materialCode
+    o String quantity
+    o String UOP
+ 	o String receiptDate
+    o String receivedQuantity
+    o String batchId
+    o String invoiceStatus
+}
+	
+
+abstract asset ReceiptNum identified by receiptId{
+	o String receiptId
+}
+asset GoodReceipt extends ReceiptNum{
+	o receipt Receipt
+}
+
+
+abstract participant User identified by name{
+ -->purchaseorder purchaseorder
+ o String name
+}
+
+participant Supplier extends User{
+}
+
+participant Schneider extends User{
+}
+
+
+
+    
+
+
+transaction searchOrder {
+	o String poNumber
+}
+event SearchOrderEvent{  	  	
+	o String poNumber
+	o newpurchaseorder purchaseorder
+}
+
+
+
+transaction GoodsReceipt{
+  	o String receiptId
+    o receipt goodreceipt
+    o newReport report
+
+}
+
+transaction RecordConsumption{
+	o String recordId
+	o newConsumptionRecord consumptionrecord
+     o newReport report
+  
+}
+
+event RecordSelfInvoiceEvent{
+	o String invDocNum
+    o SelfInvoice selfinvoice
+}
+
+transaction displayOrders{
+  o String supplier
+  
+}
+
+event DisplayOrderEvent{
+  o String poNunber
+  o newpurchaseorder purchaseorder
+}
+
+
+
+transaction displayInvoice{
+	
+}
+
+transaction displayNewInvoice{
+	
+}
+
+event displayInvoiceEvent{
+	o SelfInvoice selfinvoice
+}
+
+event SearchGreaterInvoiceEvent{
+ o  String invDocNum
+    o newSelfInvoice selfinvoice
+   o String amount
+   o String invoiceStatus
+}
+
+transaction searchInvoice{
+	o String invDocNum
+}
+
+event SearchInvoiceEvent{
+   o  String invDocNum
+   o String invoiceAmount
+   o String invoiceStatus
+   o String poNumber
+   o String materialCode
+   o String batchCode
+   o String consumptionQuantity
+   o SelfInvoice selfinvoice
+
+}
+
+transaction Payment{
+  o String invDocNum
+  o String invoiceStatus
+}
+
+
+transaction dateDifference{
+}
+
+event DateDifferenceEvent{
+  o String poNumber
+  o String materialCode
+  o String batchId
+  o String quantity
+}
+
+
+
+transaction InvoiceStatus{
+ o String invDocNum
+ o String invoiceStatus
+ o newReport report
+}
+
+event DisplaypurchaseorderEvent{
+  //o String poNunber
+  o purchaseorder purchaseorder
+}
+
+transaction display{
+	
+}
+
+event displayEvent{
+  // o String batchCode
+   o newBatch batch
+ // o newpurchaseorder purchaseorder
+	//o batch batch
+}
+event PlaceOrderEvent{
+  o String poNumber
+  o purchaseorder purchaseorder
+}
+
+event ShipmentEvent{
+  o String batchCode
+  o DeliveryNote deliverynote
+}
+
+event ReceiptEvent{
+  o GoodReceipt goodreceipt
+}
+
+event RecordConsumptionEvent{
+  o ConsumptionRecord consumptionrecord
+}
+
+event RecordPaymentEvent{
+  o String poNumber
+  o String date
+  o String materialCode
+  o String quantity
+}

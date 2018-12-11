@@ -1,0 +1,877 @@
+/**new_material
+   * Generate the invoice for each consumption
+   * @param {com.cts.ipm.p2pNetwork.generateInvoice} generate - 
+   * @transaction
+   */
+   async function generateInvoice(generateinvoice) {
+     console.log("inside function")
+     // eslint-disable-line no-unused-vars
+   const namespace = "com.cts.ipm.p2pNetwork";
+   const factory = getFactory();
+   const materialRegistry = await getAssetRegistry('com.cts.ipm.p2pNetwork.Material');
+   const invoiceRegisry = await getAssetRegistry('com.cts.ipm.p2pNetwork.SelfInvoice');  
+   const orderRegistry = await getAssetRegistry('com.cts.ipm.p2pNetwork.purchaseorder');
+   const batchRegistry = await getAssetRegistry('com.cts.ipm.p2pNetwork.newBatch');
+   const orderbatch = await batchRegistry.get(generateinvoice.batchCode);
+   const update_po = await materialRegistry.get(generateinvoice.selfinvoice.materialCode);
+     console.log(orderbatch)
+     console.log(update_po)
+   var datetime = new Date();
+   var date1 = new Date(datetime);
+   var date2 = new Date(orderbatch.batch.receiptDate);
+   var timeDiff = Math.abs(date2.getTime() - date1.getTime());
+   var diffDays = Math.ceil(timeDiff / (1000 * 3600 * 24)); 
+   console.log(diffDays)
+   console.log(orderbatch)
+   if( diffDays>90 && orderbatch.batch.availableQuantity>0){
+     const invoice = factory.newResource('com.cts.ipm.p2pNetwork', 'SelfInvoice',generateinvoice.invDocNum+orderbatch.batchCode+
+                                               update_po.purchaseorder[0].purchaseorder.availableQuantity);
+     invoice.batch = orderbatch
+     invoice.amount=(parseInt(update_po.purchaseorder[0].purchaseorder.price)*parseInt(orderbatch.batch.availableQuantity)).toString()
+     invoice.invoiceStatus="Invoice Generated"
+     invoice.materialCode=generateinvoice.selfinvoice.materialCode
+     invoice.poNumber=generateinvoice.selfinvoice.poNumber
+     invoice.consumptionQuantity = orderbatch.batch.availableQuantity
+      console.log(invoice)
+    await invoiceRegisry.add(invoice)
+     console.log(invoice)
+    //  new_batch=await batchRegistry.get(generateinvoice.batchCode);
+   //  console.log("new_batch")
+    // console.log(new_batch)
+    //  new_batch.batch.availableQuantity = "0";
+    // new_batch.batch.invoice = invoice.batch;
+   //  console.log("new_batch.batch.invoice")
+    // console.log(new_batch.batch.invoice)
+  //  await batchRegistry.update(new_batch)
+
+    const new_material = await materialRegistry.get(invoice.materialCode)
+    for(let i=0;i<new_material.purchaseorder.length;i++){
+        if(new_material.purchaseorder[i].poNumber == invoice.poNumber){
+            for(let j=0;j<new_material.purchaseorder[i].purchaseorder.batch.length;j++){
+                if(new_material.purchaseorder[i].purchaseorder.batch[j].batchCode == invoice.batch.batchCode){
+                    if(new_material.purchaseorder[i].purchaseorder.batch[j].batch.invoice.length==0){
+                        new_material.purchaseorder[i].purchaseorder.batch[j].batch.invoice=[invoice] 
+                        new_material.availableQuantity = (new_material.availableQuantity-invoice.consumptionQuantity).toString();
+                      }else{
+                        new_material.purchaseorder[i].purchaseorder.batch[j].batch.invoice.push(invoice)
+                        new_material.availableQuantity = (new_material.availableQuantity-invoice.consumptionQuantity).toString();
+                      }
+                }
+                const new_batch=await batchRegistry.get(new_material.purchaseorder[i].purchaseorder.batch[j].batchCode);
+                new_batch.batch = new_material.purchaseorder[i].purchaseorder.batch[j].batch
+                new_batch.batch.availableQuantity = "0";
+                await batchRegistry.update(new_batch)
+            }
+               //const new_order = await orderRegistry.get(invoice.poNumber)
+        const new_order=await orderRegistry.get(new_material.purchaseorder[i].poNumber);
+        
+        new_order.purchaseorder=new_material.purchaseorder[i].purchaseorder
+        new_order.purchaseorder.availableQuantity = (new_order.purchaseorder.availableQuantity-invoice.consumptionQuantity).toString();
+        await orderRegistry.update(new_order)
+
+
+        }
+   
+          
+      
+
+    }
+     await materialRegistry.update(new_material)
+
+  
+   }
+   else
+    throw new Error("Could not generate invoice")
+   }
+      
+
+/**
+   * mark the shipment for by batch
+   * @param {com.cts.ipm.p2pNetwork.ShipmentNotification} shipment - 
+   * @transaction
+   */
+   async function ShipmentNotification(shipment) {  // eslint-disable-line no-unused-vars
+     const registry = await getAssetRegistry('com.cts.ipm.p2pNetwork.DeliveryNote');
+     const orderRegistry = await getAssetRegistry('com.cts.ipm.p2pNetwork.purchaseorder');
+     const batchregistry = await getAssetRegistry('com.cts.ipm.p2pNetwork.newBatch');
+   const materialRegistry = await getAssetRegistry('com.cts.ipm.p2pNetwork.Material');
+     const factory = getFactory();
+     const results = await query('selectProductBypoNumber', {poNumber : shipment.deliverynote.poNumber});
+       const material = await materialRegistry.get(shipment.deliverynote.materialCode);
+     if(results.length>0) {
+       const update_order = await orderRegistry.get(shipment.deliverynote.poNumber);
+       if(parseInt(shipment.batch.shippedQuantity)<=parseInt(update_order.purchaseorder.requiredQuantity)){
+     const deliveryNote = factory.newResource('com.cts.ipm.p2pNetwork', 'DeliveryNote', shipment.batchId);
+     deliveryNote.note = shipment.deliverynote;
+     deliveryNote.batchId=shipment.batchId
+       
+       
+     update_order.purchaseorder.shippedQuantity=(parseInt(update_order.purchaseorder.shippedQuantity)+parseInt(shipment.batch.shippedQuantity)).toString();
+     update_order.purchaseorder.requiredQuantity=(update_order.purchaseorder.requiredQuantity-shipment.batch.shippedQuantity).toString(); 
+     const batch = factory.newResource('com.cts.ipm.p2pNetwork', 'newBatch', shipment.batchId);
+     batch.batch=shipment.batch
+     batch.batch.shipmentDate=shipment.deliverynote.shipmentDate;
+     batch.batch.recievedQuantity="0"
+     batch.batch.availableQuantity="0"   
+     batch.batch.batchStatus="Shipped"
+         batch.batch.poNumber = shipment.deliverynote.poNumber
+         batch.batch.materialCode = shipment.deliverynote.materialCode
+     update_order.purchaseorder.batch.push(batch)
+     await orderRegistry.update(update_order)  
+         await batchregistry.add(batch)
+         console.log("material.purchaseorder.length")
+         console.log(material.purchaseorder.length)
+for(let i=0;i<material.purchaseorder.length;i++)
+{
+  console.log("inside material")
+    if(material.purchaseorder[i].poNumber == shipment.deliverynote.poNumber)
+    material.purchaseorder[i].purchaseorder.batch.push(batch)
+}
+    //const update_material = await materialRegistry.get(shipment.deliverynote.materialCode);
+    //update_material.
+         
+         deliveryNote.note.shipmentQuantity = batch.batch.shippedQuantity
+         await registry.add(deliveryNote)
+    /* const new_report = factory.newResource('com.cts.ipm.p2pNetwork', 'Report', shipment.batchId);
+    console.log(new_report)
+         new_report.reportId = shipment.batchId;
+     new_report.poNumber = shipment.deliverynote.poNumber;
+     new_report.quantity = shipment.batch.shippedQuantity;
+     new_report.date = shipment.deliverynote.shipmentDate
+         new_report.materialCode = shipment.deliverynote.materialCode;
+     new_report.transactionType = "Order Shipment"
+         console.log(new_report)
+     await reportRegistry.add(new_report);*/
+         
+      const ShipmentEvent = factory.newEvent('com.cts.ipm.p2pNetwork', 'ShipmentEvent');
+      ShipmentEvent.batchCode = shipment.batchId;
+      ShipmentEvent.deliverynote = deliveryNote.note;
+      emit(ShipmentEvent)
+         
+     // const material = factory.newResource('com.cts.ipm.p2pNetwork', 'Material', shipment.deliverynote.materialCode);
+       
+      console.log(material)
+         shipment.report.transactionType = "Order Shipment"
+         shipment.report.date = shipment.deliverynote.shipmentDate
+         shipment.report.quantity = shipment.batch.shippedQuantity
+         shipment.report.poNumber=shipment.deliverynote.poNumber;
+         shipment.report.materialCode = shipment.deliverynote.materialCode
+      material.report.push(shipment.report)
+   
+     await materialRegistry.update(material) 
+   
+       }
+       else
+       throw new Error('Shipped Quantity greater than required quantity');
+     }
+     else
+       throw new Error('Order  not available for the given poNumber');   
+   }
+  
+    
+
+
+  /**
+    * Place an order for the material
+    * @param {com.cts.ipm.p2pNetwork.InvoiceStatus} status - the PlaceOrder transaction
+    * @transaction
+    */
+  
+   async function InvoiceStatus(status) {
+    
+    const invoiceRegisry = await getAssetRegistry('com.cts.ipm.p2pNetwork.SelfInvoice');
+    const orderRegistry = await getAssetRegistry('com.cts.ipm.p2pNetwork.purchaseorder');
+    const batchRegistry = await getAssetRegistry('com.cts.ipm.p2pNetwork.newBatch');
+    const materialRegistry = await getAssetRegistry('com.cts.ipm.p2pNetwork.Material');
+    
+    
+    const factory = getFactory();
+    var namespace = 'com.cts.ipm.p2pNetwork';
+    const invoice = await invoiceRegisry.get(status.invDocNum);
+    invoice.invoiceStatus = status.invoiceStatus
+    console.log(invoice)
+    
+    const orderbatch = await batchRegistry.get(invoice.batch.batchCode);
+    orderbatch.batch.invoiceStatus=status.invoiceStatus
+    console.log(orderbatch)
+    await invoiceRegisry.update(invoice)
+    
+    const update_po = await orderRegistry.get(invoice.poNumber);
+    console.log(update_po)
+    for(let i=0;i<update_po.purchaseorder.batch.length;i++){
+     if(update_po.purchaseorder.batch[i].batchCode == invoice.batch.batchCode)
+     {
+         for(let j=0;j<update_po.purchaseorder.batch[i].batch.invoice.length;j++){
+           if(update_po.purchaseorder.batch[i].batch.invoice[j].invDocNum == status.invDocNum)
+           {
+               update_po.purchaseorder.batch[i].batch.invoice[j].invoiceStatus=status.invoiceStatus
+           }
+         }
+     }
+     
+    }
+     
+ const newmaterial = await materialRegistry.get(invoice.materialCode);
+    console.log(newmaterial)
+    for(let i=0;i<newmaterial.purchaseorder.length;i++){
+      console.log("1")
+      for(let j=0;j<newmaterial.purchaseorder[i].purchaseorder.batch.length;j++){
+        console.log("2")
+        for(let k=0;k<newmaterial.purchaseorder[i].purchaseorder.batch[j].batch.invoice.length;k++)
+        {
+          if(newmaterial.purchaseorder[i].purchaseorder.batch[j].batch.invoice[k].invDocNum == status.invDocNum){
+            newmaterial.purchaseorder[i].purchaseorder.batch[j].batch.invoice[k].invoiceStatus = status.invoiceStatus
+             //await materialRegistry.update(newmaterial)
+
+            console.log("3")
+          }
+        }
+      }
+    }
+    if(invoice.invoiceStatus == "Paid"){
+    /*{
+    const new_report = factory.newResource('com.cts.ipm.p2pNetwork', 'Report', status.invDocNum);
+    new_report.reportId = status.invDocNum;
+     new_report.materialCode = invoice.materialCode;
+    new_report.poNumber = invoice.poNumber;
+    new_report.quantity = invoice.consumptionQuantity;
+    
+    var datetime = new Date();
+    console.log(datetime);
+    var date1 = new Date(datetime);
+    
+    new_report.date = date1.toString();
+    new_report.transactionType = "Payment"
+    await reportRegistry.add(new_report);
+    }
+    */
+   var datetime = new Date();
+   console.log(datetime);
+   var date1 = new Date(datetime);
+   
+   //const newmaterial = await materialRegistry.get(invoice.materialCode);
+   console.log(newmaterial)
+      status.report.transactionType = "Payment"
+      status.report.date = date1.toString();
+      status.report.quantity = invoice.consumptionQuantity
+      status.report.poNumber = invoice.poNumber;
+      status.report.materialCode = invoice.materialCode;
+   newmaterial.report.push(status.report)
+   await materialRegistry.update(newmaterial)
+   
+   
+   
+      const RecordPaymentEvent = factory.newEvent('com.cts.ipm.p2pNetwork', 'RecordPaymentEvent');
+     // ReceiptEvent.poNumber = orderRequest.poNumber
+      RecordPaymentEvent.poNumber = invoice.poNumber;
+    
+    
+    
+      RecordPaymentEvent.date = date1.toString();
+      RecordPaymentEvent.quantity = invoice.consumptionQuantity;
+      RecordPaymentEvent.materialCode = invoice.materialCode
+      emit(RecordPaymentEvent)
+    }
+    console.log(update_po)
+    await orderRegistry.update(update_po)
+    
+    }
+   
+
+
+
+
+/**new_material
+ * Record the consumption details
+ * @param {com.cts.ipm.p2pNetwork.RecordConsumption} record - 
+ * @transaction
+ */
+async function RecordConsumption(record) {  // eslint-disable-line no-unused-vars
+  const namespace = "com.cts.ipm.p2pNetwork";
+  const factory = getFactory();
+ // const reportRegistry = await getAssetRegistry('com.cts.ipm.p2pNetwork.Report');
+  const materialRegistry = await getAssetRegistry('com.cts.ipm.p2pNetwork.Material');
+  const productRegistry = await getAssetRegistry('com.cts.ipm.p2pNetwork.purchaseorder');
+  const batchRegistry = await getAssetRegistry('com.cts.ipm.p2pNetwork.newBatch');
+  const new_material = await materialRegistry.get(record.consumptionrecord.materialCode);
+  const invoiceRegisry = await getAssetRegistry('com.cts.ipm.p2pNetwork.SelfInvoice');  
+console.log(new_material)
+console.log(new_material.purchaseorder)
+console.log(record.consumptionrecord.materialCode)
+  let sup = record.consumptionrecord.consumptionQuantity
+  let tempCons = "";
+  let sum = 0;
+  let need = 0
+  console.log("new_material.availableQuantity")
+  console.log(new_material.availableQuantity)
+  if(parseInt(new_material.availableQuantity) >= parseInt(record.consumptionrecord.consumptionQuantity)){
+      for(let i=0;i<new_material.purchaseorder.length;i++){
+        console.log("2")
+         if(new_material.purchaseorder[i].purchaseorder.availableQuantity!=0){
+            for(let j=0;j<new_material.purchaseorder[i].purchaseorder.batch.length;j++){
+                                 const invoice = factory.newResource('com.cts.ipm.p2pNetwork', 'SelfInvoice',record.consumptionrecord.invDocNum+new_material.purchaseorder[i].purchaseorder.batch[j].batchCode+
+                                            new_material.purchaseorder[i].purchaseorder.availableQuantity);
+             need=sup-sum
+              console.log("3")
+             if(sum<sup){
+               if(new_material.purchaseorder[i].purchaseorder.batch[j].batch.availableQuantity!=0){
+                  if(need==new_material.purchaseorder[i].purchaseorder.batch[j].batch.availableQuantity||
+                     need>new_material.purchaseorder[i].purchaseorder.batch[j].batch.availableQuantity){
+        let temp=new_material.purchaseorder[i].purchaseorder.batch[j].batch.availableQuantity
+        sum+=parseInt(new_material.purchaseorder[i].purchaseorder.batch[j].batch.availableQuantity)
+                    invoice.consumptionQuantity = (new_material.purchaseorder[i].purchaseorder.batch[j].batch.availableQuantity).toString();
+                    invoice.amount = (parseInt(new_material.purchaseorder[i].purchaseorder.price)*parseInt(invoice.consumptionQuantity)).toString();
+        new_material.purchaseorder[i].purchaseorder.batch[j].batch.availableQuantity="0"
+
+                    new_material.purchaseorder[i].purchaseorder.availableQuantity=
+          (new_material.purchaseorder[i].purchaseorder.availableQuantity-temp).toString();
+          
+                  }
+        else{
+          sum+=need
+          new_material.purchaseorder[i].purchaseorder.batch[j].batch.availableQuantity=(parseInt(new_material.purchaseorder[i].purchaseorder.batch[j].batch.availableQuantity)-need).toString(); 
+          new_material.purchaseorder[i].purchaseorder.availableQuantity=
+          (new_material.purchaseorder[i].purchaseorder.availableQuantity-need).toString();
+          invoice.consumptionQuantity = need.toString();
+          invoice.amount = (parseInt(new_material.purchaseorder[i].purchaseorder.price)*parseInt(invoice.consumptionQuantity)).toString();
+        }
+       const update_batch = await batchRegistry.get(new_material.purchaseorder[i].purchaseorder.batch[j].batchCode);   
+                          
+
+        invoice.batch = update_batch
+        //invoice.amount = parseInt(new_material.purchaseorder[i].purchaseorder.price)*parseInt(invoice.consumptionQuantity);
+        invoice.invoiceStatus = "Invoice Generated"
+        invoice.materialCode = new_material.purchaseorder[i].purchaseorder.materialCode
+        invoice.poNumber =  new_material.purchaseorder[i].poNumber
+       // invoice.consumptionQuantity = record.consumptionrecord.consumptionQuantity
+        await invoiceRegisry.add(invoice)
+      
+        if(new_material.purchaseorder[i].purchaseorder.batch[j].batch.invoice.length==0){
+          new_material.purchaseorder[i].purchaseorder.batch[j].batch.invoice=[invoice] 
+        }else{
+          new_material.purchaseorder[i].purchaseorder.batch[j].batch.invoice.push(invoice)
+        }
+        
+      }
+      }else if(sum==sup){
+        break;
+       }
+      
+     new_batch=await batchRegistry.get(new_material.purchaseorder[i].purchaseorder.batch[j].batchCode);
+     new_batch.batch = new_material.purchaseorder[i].purchaseorder.batch[j].batch
+     await batchRegistry.update(new_batch)
+             }
+             new_po=await productRegistry.get(new_material.purchaseorder[i].poNumber);
+             new_po.purchaseorder=new_material.purchaseorder[i].purchaseorder
+             await productRegistry.update(new_po)
+        
+         }
+   
+        }
+      }
+      else{
+        throw new Error("Available quantity should be greater that consumption quantity");
+      }
+ new_material.availableQuantity = (new_material.availableQuantity-record.consumptionrecord.consumptionQuantity).toString();
+  const RecordConsumptionEvent = factory.newEvent('com.cts.ipm.p2pNetwork', 'RecordConsumptionEvent');
+  RecordConsumptionEvent.consumptionrecord = record.consumptionrecord;
+  emit(RecordConsumptionEvent)
+   record.report.transactionType = "Record Consumption"
+   record.report.date = record.consumptionrecord.materialDoceDate
+   record.report.quantity = record.consumptionrecord.consumptionQuantity
+   record.report.poNumber = record.consumptionrecord.poNumber;
+   record.report.materialCode = record.consumptionrecord.materialCode;
+   new_material.report.push(record.report) 
+
+await materialRegistry.update(new_material)
+       
+ } 
+
+
+
+      
+ 
+/**
+     * Place an order for the material
+     * @param {com.cts.ipm.p2pNetwork.PlaceOrder} placeOrder - the PlaceOrder transaction
+     * @transaction
+     */
+    async function PlaceOrder(orderRequest) {
+      const registry = await getAssetRegistry('com.cts.ipm.p2pNetwork.purchaseorder');
+      const materialRegistry = await getAssetRegistry('com.cts.ipm.p2pNetwork.Material');
+      const factory = getFactory();
+      var namespace = 'com.cts.ipm.p2pNetwork';
+      const order = factory.newResource('com.cts.ipm.p2pNetwork', 'purchaseorder', orderRequest.poNumber);
+        order.purchaseorder = orderRequest.purchaseorder;
+      order.purchaseorder.requiredQuantity = orderRequest.purchaseorder.orderQuantity
+      order.purchaseorder.shippedQuantity = "0";
+      order.purchaseorder.receivedQuantity = "0";
+      order.purchaseorder.availableQuantity = "0";
+      orderRequest.purchaseorder.orderStatus = "open";
+      await registry.add(order) 
+      const results = await query('selectMaterialbymaterialCode', {materialCode : orderRequest.purchaseorder.materialCode});
+      console.log(results)
+      if(results.length>0)
+      {
+        console.log("inside")
+        const material = await materialRegistry.get(orderRequest.purchaseorder.materialCode);
+        console.log(material)
+        if(material.purchaseorder.length!=0)
+        material.purchaseorder.push(order);  
+        else{
+          console.log("else")
+          material.purchaseorder=[]
+         material.purchaseorder.push(order); 
+        }
+       // material.receivedQuantity = "0";
+       // material.availableQuantity = "0"
+       // material.report=[]
+        material.report.push(orderRequest.report); 
+       await materialRegistry.update(material) 
+      }
+      else{
+       const material = factory.newResource('com.cts.ipm.p2pNetwork', 'Material', orderRequest.purchaseorder.materialCode);
+       if(material.purchaseorder!=undefined)
+       material.purchaseorder.push(order);  
+       else{
+         material.purchaseorder=[]
+        material.purchaseorder.push(order); 
+       }
+       material.receivedQuantity = "0";
+       material.availableQuantity = "0"
+       material.report=[]
+       material.report.push(orderRequest.report); 
+      await materialRegistry.add(material)
+      }
+    
+    }
+    
+  
+  
+  
+
+
+ 
+  
+   
+   
+   
+   /**
+   * Search the order by poNumber
+   * @param {com.cts.ipm.p2pNetwork.GoodsReceipt} receipt - 
+   * @transaction
+   */
+   async function GoodsReceipt(receipt) { 
+      const registry = await getAssetRegistry('com.cts.ipm.p2pNetwork.GoodReceipt');
+      const materialRegistry = await getAssetRegistry('com.cts.ipm.p2pNetwork.Material');
+      const productRegistry = await getAssetRegistry('com.cts.ipm.p2pNetwork.purchaseorder');
+      const batchRegistry = await getAssetRegistry('com.cts.ipm.p2pNetwork.newBatch');
+      const factory = getFactory(); 
+      const results = await query('selectProductBypoNumber', {poNumber : receipt.goodreceipt.poNumber});
+      if(results.length>0) {
+      const update_po = await productRegistry.get(receipt.goodreceipt.poNumber);
+      const batch = await query('selectProductByBatch', {batchCode : receipt.goodreceipt.batchId});
+      if(batch.length>0  ){
+        if(batch[0].batch.batchStatus=="Shipped"){
+        const update_batch = await batchRegistry.get(receipt.goodreceipt.batchId);      
+        if(parseInt(receipt.goodreceipt.receivedQuantity) <= parseInt(update_batch.batch.shippedQuantity))
+        {
+            update_batch.batch.availableQuantity=receipt.goodreceipt.receivedQuantity
+            update_batch.batch.recievedQuantity=receipt.goodreceipt.receivedQuantity
+            update_batch.batch.batchStatus="recieved"
+            update_batch.batch.receiptDate= receipt.goodreceipt.receiptDate
+          //console.log(update_po.purchaseorder.receivedQuantity+" . "+receipt.goodreceipt.receivedQuantity)
+            update_po.purchaseorder.receivedQuantity= (parseInt(update_po.purchaseorder.receivedQuantity)+parseInt(receipt.goodreceipt.receivedQuantity)).toString();
+            update_po.purchaseorder.availableQuantity= (parseInt(update_po.purchaseorder.availableQuantity)+parseInt(receipt.goodreceipt.receivedQuantity)).toString();         
+            if(update_batch.batch.shippedQuantity>receipt.goodreceipt.receivedQuantity){
+                update_po.purchaseorder.requiredQuantity=(parseInt(update_po.purchaseorder.requiredQuantity)+(parseInt(update_batch.batch.shippedQuantity)-parseInt(receipt.goodreceipt.receivedQuantity))).toString()
+            }
+           for(var i=0;i<update_po.purchaseorder.batch.length;i++){
+               if(update_po.purchaseorder.batch[i].batchCode==update_batch.batchCode){
+                  update_po.purchaseorder.batch[i].batch=update_batch.batch
+                  update_po.purchaseorder.batch[i].batch.receiptDate=receipt.goodreceipt.receiptDate
+                    }
+                }
+        }
+        else
+        {
+             throw new Error("Recived quantity greater than shipped quantity");
+         }
+               if(update_po.purchaseorder.orderQuantity == update_po.purchaseorder.receivedQuantity)
+            {
+              update_po.purchaseorder.orderStatus="Closed"
+              
+            }
+       await batchRegistry.update(update_batch)
+       await productRegistry.update(update_po)
+    
+   const material = await query('selectProductBymaterialCode', {materialCode : receipt.goodreceipt.materialCode});
+      if(material.length>0){
+        const update_material = await materialRegistry.get(receipt.goodreceipt.materialCode);
+        update_material.receivedQuantity=(parseInt(update_material.receivedQuantity)+parseInt(receipt.goodreceipt.receivedQuantity)).toString();
+        update_material.availableQuantity= (parseInt(update_material.availableQuantity)+parseInt(receipt.goodreceipt.receivedQuantity)).toString();
+       
+        for(var j=0;j<update_material.purchaseorder.length;j++){
+        if(update_material.purchaseorder[j].poNumber==update_po.poNumber){
+          update_material.purchaseorder[j]=update_po
+        }
+        }
+        
+        receipt.report.transactionType = "Goods Receipt"
+         receipt.report.date = receipt.goodreceipt.receiptDate
+         receipt.report.quantity = receipt.goodreceipt.receivedQuantity
+         receipt.report.poNumber = receipt.goodreceipt.poNumber;
+         receipt.report.materialCode = receipt.goodreceipt.materialCode
+      update_material.report.push(receipt.report)
+        
+      
+       await materialRegistry.update(update_material)
+        
+   
+   
+      }
+    
+        else{
+            const new_material = factory.newResource('com.cts.ipm.p2pNetwork', 'Material', receipt.goodreceipt.materialCode);
+            new_material.receivedQuantity=receipt.goodreceipt.receivedQuantity
+            new_material.availableQuantity=receipt.goodreceipt.receivedQuantity
+            new_material.purchaseorder=[update_po]
+          
+          receipt.report.transactionType = "Goods Receipt"
+         receipt.report.date = receipt.goodreceipt.receiptDate
+         receipt.report.quantity = receipt.goodreceipt.receivedQuantity
+         receipt.report.poNumber = receipt.goodreceipt.poNumber;
+         receipt.report.materialCode = receipt.goodreceipt.materialCode
+      new_material.report.push(receipt.report)
+          
+           await materialRegistry.add(new_material)
+        }
+      }
+       }
+    else{
+        throw console.error("no batch with given id");
+        
+    }
+   /* const new_report = factory.newResource('com.cts.ipm.p2pNetwork', 'Report', receipt.receiptId);
+    console.log(new_report)
+     new_report.reportId = receipt.receiptId;
+     new_report.poNumber = receipt.goodreceipt.poNumber;
+        new_report.materialCode = receipt.goodreceipt.materialCode;
+     new_report.quantity = receipt.goodreceipt.receivedQuantity;
+     new_report.date = receipt.goodreceipt.receiptDate
+     new_report.transactionType = "Good Receipt"
+     console.log(new_report)
+     await reportRegistry.add(new_report);*/
+        
+     const ReceiptEvent = factory.newEvent('com.cts.ipm.p2pNetwork', 'ReceiptEvent');
+    // ReceiptEvent.poNumber = orderRequest.poNumber
+     ReceiptEvent.goodreceipt = receipt.goodreceipt;
+     emit(ReceiptEvent)
+        
+         //  const newmaterial = await materialRegistry.get(receipt.goodreceipt.materialCode);
+     // console.log(newmaterial)
+     
+   
+    // await materialRegistry.update(newmaterial)
+   
+      
+      }
+      else{
+        throw console.error("no product with given id");
+        
+    }
+    
+    }
+   
+   
+   
+   
+   /**
+    * Search the product by uuid
+    * @param {com.cts.ipm.p2pNetwork.generateReport} report - the publishBond transaction
+    * @transaction
+    */
+   async function generateReport(report) {  // eslint-disable-line no-unused-vars
+     const factory = getFactory();
+     const results = await query('getHistorianRecordsforPlaceOrder');
+     console.log(results)
+     const GenerateReportEvent = factory.newEvent('com.cts.ipm.p2pNetwork', 'GenerateReportEvent');
+    //if(results.length>0) {
+   for(let i=0;i<results.length;i++){
+     console.log(results)
+    GenerateReportEvent.poNumber = results[i].eventsEmitted[0].poNumber
+    GenerateReportEvent.date = results[i].eventsEmitted[0].purchaseorder.creationDate
+    GenerateReportEvent.transactoinType = "Place Order"
+    GenerateReportEvent.quantity = results[i].eventsEmitted[0].purchaseorder.orderQuantity
+    GenerateReportEvent.materialCode = results[i].eventsEmitted[0].purchaseorder.materialCode     
+    emit(GenerateReportEvent)      
+   //}
+   }
+   //else
+   // throw new Error('Error in generating report for place order');
+   
+      const shipmentResults = await query('getHistorianRecordsforShipmentNotification');
+    console.log("shipmentResults")
+     console.log(shipmentResults)
+    //const GenerateReportEvent = factory.newEvent('com.cts.ipm.p2pNetwork', 'GenerateReportEvent');
+   // if(shipmentResults.length>0) {
+   for(let i=0;i<shipmentResults.length;i++){
+     console.log(shipmentResults)
+    GenerateReportEvent.poNumber = shipmentResults[i].eventsEmitted[0].deliverynote.poNumber
+    GenerateReportEvent.date = shipmentResults[i].eventsEmitted[0].deliverynote.shipmentDate
+    GenerateReportEvent.transactoinType = "Order Shipment"
+    GenerateReportEvent.quantity = shipmentResults[i].eventsEmitted[0].deliverynote.shipmentQuantity
+    GenerateReportEvent.materialCode = shipmentResults[i].eventsEmitted[0].deliverynote.materialCode     
+    emit(GenerateReportEvent)
+   // }
+    }
+   //else
+   //throw new Error('Error in generating report for shipment Notification');
+   
+        const ReceiptResults = await query('getHistorianRecordsforGoodsReceipt');
+    console.log("ReceiptResults")
+     console.log(ReceiptResults)
+    //const GenerateReportEvent = factory.newEvent('com.cts.ipm.p2pNetwork', 'GenerateReportEvent');
+   // if(ReceiptResults.length>0) {
+   for(let i=0;i<ReceiptResults.length;i++){
+     console.log(ReceiptResults)
+    GenerateReportEvent.poNumber = ReceiptResults[i].eventsEmitted[0].goodreceipt.poNumber
+    GenerateReportEvent.date = ReceiptResults[i].eventsEmitted[0].goodreceipt.receiptDate
+    GenerateReportEvent.transactoinType = "Goods Receipt"
+    GenerateReportEvent.quantity = ReceiptResults[i].eventsEmitted[0].goodreceipt.receivedQuantity
+    GenerateReportEvent.materialCode = ReceiptResults[i].eventsEmitted[0].goodreceipt.materialCode     
+    emit(GenerateReportEvent)
+   //}
+    }
+   // else
+   //throw new Error('Error in generating report for good receipt');
+     
+     const ConsumptionResults = await query('getHistorianRecordsforRecordConsumption');
+    console.log("ConsumptionResults")
+     console.log(ConsumptionResults)
+    //const GenerateReportEvent = factory.newEvent('com.cts.ipm.p2pNetwork', 'GenerateReportEvent');
+   // if(ConsumptionResults.length>0) {
+   for(let i=0;i<ConsumptionResults.length;i++){
+     console.log(ConsumptionResults[i].eventsEmitted[0].consumptionrecord.poNumber)
+     
+   GenerateReportEvent.poNumber = ConsumptionResults[i].eventsEmitted[0].consumptionrecord.poNumber
+    GenerateReportEvent.date = ConsumptionResults[i].eventsEmitted[0].consumptionrecord.materialDoceDate
+    GenerateReportEvent.transactoinType = "Record Consumption"
+    GenerateReportEvent.quantity = ConsumptionResults[i].eventsEmitted[0].consumptionrecord.consumptionQuantity
+    GenerateReportEvent.materialCode = ConsumptionResults[i].eventsEmitted[0].consumptionrecord.materialCode     
+    emit(GenerateReportEvent)
+   // }
+    }
+     
+   //else
+   // throw new Error('Error in generating report for consumption record');   
+     
+     const PaymentResults = await query('getHistorianRecordsforPayment');
+    console.log("PaymentResults")
+     console.log(PaymentResults)
+    //const GenerateReportEvent = factory.newEvent('com.cts.ipm.p2pNetwork', 'GenerateReportEvent');
+    //if(PaymentResults.length>0) {
+   for(let i=0;i<PaymentResults.length;i++){
+     console.log(PaymentResults[i].eventsEmitted[0].poNumber)
+     
+   GenerateReportEvent.poNumber = PaymentResults[i].eventsEmitted[0].poNumber
+    GenerateReportEvent.date = PaymentResults[i].eventsEmitted[0].date
+    GenerateReportEvent.transactoinType = "Record Payment"
+    GenerateReportEvent.quantity = PaymentResults[i].eventsEmitted[0].quantity
+    GenerateReportEvent.materialCode = PaymentResults[i].eventsEmitted[0].materialCode     
+    emit(GenerateReportEvent)
+   // }
+    }
+     
+   //else
+   // throw new Error('Error in generating report for Payment');   
+   }
+   
+   
+   
+   
+   /**
+   * Display all orders where date difference is greater than 90
+   * @param {com.cts.ipm.p2pNetwork.display} display - 
+   * @transaction
+   */
+   async function display(display) { 
+   console.log("inside function")// eslint-disable-line no-unused-vars
+   // const MaterialRegistry = await getAssetRegistry('com.cts.ipm.p2pNetwork.Material');
+   const factory = getFactory();
+   const results = await query('selectBatch');
+    console.log(results)
+    if(results.length > 0) {
+      for(let i=0;i<results.length;i++)
+      {
+        
+        console.log("inside1")
+         if( results[i].batch.availableQuantity > 0){
+      var datetime = new Date();
+      console.log(datetime);
+      var date1 = new Date(datetime);
+      console.log(results[i].batch.receiptDate);
+      var date2 = new Date(results[i].batch.receiptDate);
+      var timeDiff = Math.abs(date2.getTime() - date1.getTime());
+      var diffDays = Math.ceil(timeDiff / (1000 * 3600 * 24)); 
+         // const Material = factory.newResource('com.cts.ipm.p2pNetwork', 'Material', results[i].batch[j].materialCode);
+      console.log(diffDays);
+          if(diffDays > 90){ 
+            console.log("inside")
+       const displayEvent = factory.newEvent('com.cts.ipm.p2pNetwork', 'displayEvent');
+      console.log("event emitted" +results[i]);
+            console.log(results[i].batchCode)
+      // displayEvent.batchCode = results[i].batchCode;
+      displayEvent.batch=results[i];
+      emit(displayEvent);
+          }
+         }
+   
+        }
+            
+      
+   }
+    else
+      throw new Error('Error in fetching data');   
+   }
+   
+   
+   
+   
+   
+   
+   /**
+    * Search the invoice for given invDocNum
+    * @param {com.cts.ipm.p2pNetwork.searchInvoice} displayinvoice - the PlaceOrder transaction
+    * @transaction
+    */
+   async function searchInvoice(search) {
+     const results = await query('selectProductByinvoiceId', {invDocNum : search.invDocNum});
+    const factory = getFactory();
+       const productRegistry = await getAssetRegistry('com.cts.ipm.p2pNetwork.SelfInvoice');
+   console.log(results)
+   if(results.length>0) {
+     for(let i=0;i<results.length;i++){
+     const SearchInvoiceEvent = factory.newEvent('com.cts.ipm.p2pNetwork', 'SearchInvoiceEvent');
+     console.log("event emitted" +results[i]);
+       SearchInvoiceEvent.invDocNum = results[i].invDocNum;
+     SearchInvoiceEvent.invoiceAmount = results[i].amount;
+     SearchInvoiceEvent.invoiceStatus = results[i].invoiceStatus;
+     SearchInvoiceEvent.poNumber = results[i].poNumber
+   SearchInvoiceEvent.materialCode = results[i].materialCode
+   SearchInvoiceEvent.batchCode = results[i].batch.batchCode
+   SearchInvoiceEvent.consumptionQuantity = results[i].consumptionQuantity
+     SearchInvoiceEvent.selfinvoice = results[i].batch.batch;  
+       
+     emit(SearchInvoiceEvent);
+   }
+   }
+   else
+     throw new Error('Invoice not available for given id');   
+   }
+   
+   /**
+   * Search the order by poNumbera
+   * @param {com.cts.ipm.p2pNetwork.searchOrder} search - 
+   * @transaction
+   */
+   async function searchOrder(search) {  // eslint-disable-line no-unused-vars
+   
+   const results = await query('selectProductBypoNumber', {poNumber : search.poNumber});
+   if(results.length>0) {
+     const factory = getFactory();
+     const productRegistry = await getAssetRegistry('com.cts.ipm.p2pNetwork.purchaseorder'); 
+     const new_order = await productRegistry.get(search.poNumber);
+     
+     const SearchOrderEvent = factory.newEvent('com.cts.ipm.p2pNetwork', 'SearchOrderEvent');
+     console.log("event emitted" +results[0]);
+     SearchOrderEvent.poNumber = results[0].poNumber;
+     SearchOrderEvent.purchaseorder = results[0].purchaseorder;
+     emit(SearchOrderEvent);
+   new_order.purchaseorder = results[0].purchaseorder;
+     await productRegistry.update(new_order); 
+   }
+   else
+     throw new Error('Order  not available for the given poNumber');   
+   }
+   
+   
+   /**
+    * Display te orders for given supplier 
+    * @param {com.cts.ipm.p2pNetwork.displayOrders} displayorder - the PlaceOrder transaction
+    * @transaction
+    */
+   async function displayOrders(search) {
+     const results = await query('selectProductBysupplier', {supplier : search.supplier});
+   console.log(results)
+   if(results.length>0) {
+     for(let i=0;i<results.length;i++){
+     const factory = getFactory();
+     const productRegistry = await getAssetRegistry('com.cts.ipm.p2pNetwork.purchaseorder');
+     
+     const SearchOrderEvent = factory.newEvent('com.cts.ipm.p2pNetwork', 'SearchOrderEvent');
+     console.log("event emitted" +results[i]);
+     SearchOrderEvent.poNumber = results[i].poNumber;
+     SearchOrderEvent.purchaseorder = results[i].purchaseorder;
+     emit(SearchOrderEvent);
+   }
+   }
+   else
+     throw new Error('Purchase order not available for given supplier');   
+   }
+   
+   
+   /**
+    * display all the invoices generated
+    * @param {com.cts.ipm.p2pNetwork.displayInvoice} displayinvoice - the PlaceOrder transaction
+    * @transaction
+    */
+   
+   async function displayInvoice(search) {
+     const factory = getFactory();
+     const results = await query('selectInvoice');
+    console.log(results)
+     if(results.length>0) {
+       for(let i=0;i<results.length;i++){
+         const SearchInvoiceEvent = factory.newEvent('com.cts.ipm.p2pNetwork', 'SearchInvoiceEvent');
+     console.log("event emitted" +results[i]);
+           
+           
+              SearchInvoiceEvent.invDocNum = results[i].invDocNum;
+     SearchInvoiceEvent.invoiceAmount = results[i].amount;
+     SearchInvoiceEvent.invoiceStatus = results[i].invoiceStatus;
+     SearchInvoiceEvent.poNumber = results[i].poNumber
+   SearchInvoiceEvent.materialCode = results[i].materialCode
+   SearchInvoiceEvent.batchCode = results[i].batch.batchCode
+   SearchInvoiceEvent.consumptionQuantity = results[i].consumptionQuantity
+     SearchInvoiceEvent.selfinvoice = results[i].batch.batch;  
+         emit(SearchInvoiceEvent);
+         } 
+   } else{
+     throw new Error('Error in retrieving invoices'); 
+    }
+   
+   }
+   
+   
+   /**
+    * Place an order for the material
+    * @param {com.cts.ipm.p2pNetwork.Payment} payment - the PlaceOrder transaction
+    * @transaction
+    */
+   async function Payment(create) {
+     const registry = await getAssetRegistry('com.cts.ipm.p2pNetwork.SelfInvoice');
+     const factory = getFactory();
+     var namespace = 'com.cts.ipm.p2pNetwork';
+   const new_order = await registry.get(create.invDocNum);
+   const results = await query('selectProductByinvDocNum', {invDocNum : create.invDocNum});
+   console.log(results[0])
+   if(results.length>0){
+     
+    new_order.invoiceStatus = create.invoiceStatus
+     await registry.update(new_order)
+   
+                          }
+   else
+     throw new Error ("Payment cannot be done")
+   }
